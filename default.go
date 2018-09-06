@@ -65,12 +65,11 @@ func Usage(errorMsg string) {
 	} //for each flag
 
 	for _, flag := range defaultSet.flags {
-		fmt.Fprintf(os.Stderr, "\t%s\t%-*.*s\t%*.*v\t%s\n",
+		fmt.Fprintf(os.Stderr, "\t%s\t%-*.*s\t%*v\t%s\n",
 			flag.short,
 			longLen,
 			longLen,
 			flag.long,
-			valueLen,
 			valueLen,
 			flag.value,
 			flag.doc)

@@ -271,8 +271,10 @@ func onlyAlnum(s string) bool {
 	return true
 } //onlyAlnum()
 
+/*
 ...todo: example to combine flag sets
 parse flag set to remove things used and later parse the rest
 make groups of commands in the usage section
 lose standing items, and list of items, sequential items, ...defaultSet
 validation functions
+*/
