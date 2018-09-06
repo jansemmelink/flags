@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	defaultSet = NewSet()
+	defaultSet = NewSet("", "")
 )
 
 //Bool in the default set
@@ -37,6 +37,14 @@ func String(short, long string, init string, doc string) *FlagDescription {
 	return newFlagPtr
 } //String()
 
+//AddSet adds the specified set to the default set, and panic on error
+func AddSet(otherSet Set) {
+	err := defaultSet.AddSet(otherSet)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to add otherSet to defaultSet: %v", err))
+	}
+} //AddSet()
+
 //DefaultSet to get read access to the default set
 func DefaultSet() Set {
 	return *defaultSet
@@ -48,33 +56,7 @@ func Usage(errorMsg string) {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", errorMsg)
 	}
 	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", path.Base(os.Args[0]))
-	longLen := 0
-	valueLen := 0
-	for _, flag := range defaultSet.flags {
-		l := len(flag.long)
-		if l > longLen {
-			longLen = l
-		}
-		if flag.value != nil {
-			v := fmt.Sprintf("%v", flag.value)
-			vl := len(v)
-			if vl > valueLen {
-				valueLen = vl
-			}
-		}
-	} //for each flag
-
-	for _, flag := range defaultSet.flags {
-		fmt.Fprintf(os.Stderr, "\t%s\t%-*.*s\t%*v\t%s\n",
-			flag.short,
-			longLen,
-			longLen,
-			flag.long,
-			valueLen,
-			flag.value,
-			flag.doc)
-	} //for each flag
-
+	defaultSet.PrintUsage(os.Stderr)
 	os.Exit(-1)
 } //Usage()
 
@@ -97,6 +79,28 @@ func Parse() {
 		Usage(err.Error())
 	}
 } //Parse()
+
+//ParseKnown parses the default set of command line options and return remaining unused options
+func ParseKnown() []string {
+	//Args[0] is the program executable, start from 1
+	//progName := path.Base(os.Args[0])
+	if os.Args == nil || len(os.Args) < 1 {
+		panic("Cannot access program arguments")
+	}
+	//if "?" is specified or --help, display usage info without an error
+	for _, opt := range os.Args[1:] {
+		if opt == "?" || opt == "--help" {
+			Usage("")
+		}
+	}
+
+	//do normal flag set parsing and fail with usage screen and exit code 1 on error
+	remainingArgs, err := defaultSet.ParseKnown(os.Args[1:])
+	if err != nil {
+		Usage(err.Error())
+	}
+	return remainingArgs
+} //ParseKnown()
 
 //Flag to get a named flag by short/long option
 //Use it e.g. like this:   if flags.GetFlag("-d").GetValue().(bool) { ... defbug is on ... }
