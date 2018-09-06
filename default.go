@@ -37,6 +37,14 @@ func String(short, long string, init string, doc string) *FlagDescription {
 	return newFlagPtr
 } //String()
 
+//AddSet adds the specified set to the default set, and panic on error
+func AddSet(otherSet Set) {
+	err := defaultSet.AddSet(otherSet)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to add otherSet to defaultSet: %v", err))
+	}
+} //AddSet()
+
 //DefaultSet to get read access to the default set
 func DefaultSet() Set {
 	return *defaultSet
@@ -71,6 +79,28 @@ func Parse() {
 		Usage(err.Error())
 	}
 } //Parse()
+
+//ParseKnown parses the default set of command line options and return remaining unused options
+func ParseKnown() []string {
+	//Args[0] is the program executable, start from 1
+	//progName := path.Base(os.Args[0])
+	if os.Args == nil || len(os.Args) < 1 {
+		panic("Cannot access program arguments")
+	}
+	//if "?" is specified or --help, display usage info without an error
+	for _, opt := range os.Args[1:] {
+		if opt == "?" || opt == "--help" {
+			Usage("")
+		}
+	}
+
+	//do normal flag set parsing and fail with usage screen and exit code 1 on error
+	remainingArgs, err := defaultSet.ParseKnown(os.Args[1:])
+	if err != nil {
+		Usage(err.Error())
+	}
+	return remainingArgs
+} //ParseKnown()
 
 //Flag to get a named flag by short/long option
 //Use it e.g. like this:   if flags.GetFlag("-d").GetValue().(bool) { ... defbug is on ... }

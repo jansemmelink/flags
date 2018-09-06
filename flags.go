@@ -15,13 +15,23 @@ var (
 	longValidationPattern  = regexp.MustCompile("^--[a-zA-Z0-9][a-zA-Z0-9_.-]*[a-zA-Z0-9]$")
 )
 
+type group struct {
+	name string
+	set  *Set
+}
+
+//FlagValueValidationFunc is called to validate the value
+type FlagValueValidationFunc func(value interface{}) error
+
 //FlagDescription ...
 type FlagDescription struct {
-	index int
-	short string
-	long  string
-	value interface{}
-	doc   string
+	index    int
+	short    string
+	long     string
+	value    interface{}
+	validate FlagValueValidationFunc
+	group    map[string]group
+	doc      string
 }
 
 //Set of flags
@@ -49,7 +59,7 @@ func NewSet(name, doc string) *Set {
 //long must be "--ABC" when ABC is a word consisting of 2 or more characters,
 //   starting with a letter or digit, followed by more letters, digits, dashes, dots or underscores
 //   and ending again with a letter or digit.
-func newFlag(short, long string, value interface{}, doc string) (FlagDescription, error) {
+func newFlag(short, long string, value interface{}, validateFunc FlagValueValidationFunc, doc string) (FlagDescription, error) {
 	if short != "" && !shortValidationPattern.MatchString(short) {
 		return FlagDescription{}, fmt.Errorf("Short option %s must be \"-<letter|digit>\"", short)
 	}
@@ -57,10 +67,11 @@ func newFlag(short, long string, value interface{}, doc string) (FlagDescription
 		return FlagDescription{}, fmt.Errorf("Long option %s must be \"--<word>\" that starts and ends with a letters or digits and allows '_', '-' and '.' in the middle", long)
 	}
 	f := FlagDescription{
-		short: short,
-		long:  long,
-		value: value,
-		doc:   doc,
+		short:    short,
+		long:     long,
+		value:    value,
+		validate: validateFunc,
+		doc:      doc,
 	}
 	return f, nil
 } //newFlag()
@@ -72,7 +83,7 @@ func (set *Set) Bool(short, long string, init bool, doc string) (*FlagDescriptio
 	}
 	//create the new flag
 	value := init
-	newFlag, err := newFlag(short, long, value, doc)
+	newFlag, err := newFlag(short, long, value, nil, doc)
 	if err != nil {
 		return nil, fmt.Errorf("Set.Bool() cannot add %s %s: %v", short, long, err)
 	}
@@ -91,7 +102,7 @@ func (set *Set) Int(short, long string, init int, doc string) (*FlagDescription,
 	}
 	//create the new flag
 	value := init
-	newFlag, err := newFlag(short, long, value, doc)
+	newFlag, err := newFlag(short, long, value, nil, doc)
 	if err != nil {
 		return nil, fmt.Errorf("Set.Int() cannot add %s %s: %v", short, long, err)
 	}
@@ -110,7 +121,7 @@ func (set *Set) String(short, long string, init string, doc string) (*FlagDescri
 	}
 	//create the new flag
 	value := init
-	newFlag, err := newFlag(short, long, value, doc)
+	newFlag, err := newFlag(short, long, value, nil, doc)
 	if err != nil {
 		return nil, fmt.Errorf("Set.String() cannot add %s %s: %v", short, long, err)
 	}
@@ -121,6 +132,106 @@ func (set *Set) String(short, long string, init string, doc string) (*FlagDescri
 	}
 	return newFlagPtr, nil
 } //Set.String()
+
+//Select adds a selection flag to the set allowing one of the specified values
+func (set *Set) Select(short, long string, init string, allow []string, doc string) (*FlagDescription, error) {
+	if set == nil {
+		return nil, fmt.Errorf("Set.Select() called on set==nil")
+	}
+	//create the new flag
+	value := init
+	newFlag, err := newFlag(
+		short,
+		long,
+		value,
+		func([]string) FlagValueValidationFunc {
+			return func(value interface{}) error {
+				for _, s := range allow {
+					if s == value.(string) {
+						return nil
+					}
+				}
+				return fmt.Errorf("%s %s value \"%s\" must be one of %v", short, long, value.(string), allow)
+			}
+		}(allow),
+		doc)
+	if err != nil {
+		return nil, fmt.Errorf("Set.Select() cannot add %s %s: %v", short, long, err)
+	}
+	//add
+	newFlagPtr, err := set.Add(newFlag)
+	if err != nil {
+		return nil, fmt.Errorf("Set.Select() cannot add %s %s: %v", short, long, err)
+	}
+	return newFlagPtr, nil
+} //Set.Select()
+
+//Group adds a group of sub obtions to the set
+//e.g. -o <oper> --oper=<oper>
+//After adding the group, add options to the FlagDescription
+func (set *Set) Group(short, long string, doc string) (*FlagDescription, error) {
+	if set == nil {
+		return nil, fmt.Errorf("Set.Select() called on set==nil")
+	}
+	//create the new flag
+	value := "" //name of selected group
+	newFlag, err := newFlag(
+		short,
+		long,
+		value,
+		nil, //will use newFlag.validateGroupSelect,
+		doc)
+	if err != nil {
+		return nil, fmt.Errorf("Set.Select() cannot add %s %s: %v", short, long, err)
+	}
+	//add
+	newFlagPtr, err := set.Add(newFlag)
+	if err != nil {
+		return nil, fmt.Errorf("Set.Select() cannot add %s %s: %v", short, long, err)
+	}
+	newFlagPtr.group = make(map[string]group)
+	newFlagPtr.validate = newFlag.validateGroupSelect
+	return newFlagPtr, nil
+} //Set.Group()
+
+//Add another group of options, using the name of the set for selection
+func (f *FlagDescription) Add(set *Set) error {
+	if f == nil {
+		return fmt.Errorf("(nil).Add() not allowed")
+	}
+	if f.group == nil {
+		return fmt.Errorf("%n: Not a Group flag", *f)
+	}
+	if set == nil {
+		return fmt.Errorf("%n: Cannot add nil", *f)
+	}
+	if set.name == "" {
+		return fmt.Errorf("%n: Cannot add unnamed set", *f)
+	}
+	if _, ok := f.group[set.name]; ok {
+		return fmt.Errorf("%n: Cannot add duplicate set.name=%s", *f, set.name)
+	}
+	f.group[set.name] = group{name: set.name, set: set}
+	log.Printf("Added option \"%s\", now %d options in %n\n", set.name, len(f.group), f)
+	return nil
+} //FlagDescription.Add()
+
+func (f *FlagDescription) validateGroupSelect(value interface{}) error {
+	s := value.(string)
+	log.Printf("%n: Validating value=\"%v\"", *f, value)
+	if len(f.group) < 1 {
+		return fmt.Errorf("Unknown option %n \"%s\": no expected values registered", f, s)
+	}
+	_, ok := f.group[s]
+	if !ok {
+		expects := ""
+		for n := range f.group {
+			expects += n + " "
+		}
+		return fmt.Errorf("Unknown option %n \"%s\" not in %s", f, s, expects)
+	}
+	return nil
+} //validateGroupSelect()
 
 //Add another flag description
 func (set *Set) Add(flag FlagDescription) (*FlagDescription, error) {
@@ -154,6 +265,23 @@ func (set *Set) Add(flag FlagDescription) (*FlagDescription, error) {
 	}
 	return newFlagPtr, nil
 } //Set.Add()
+
+//AddSet copies all flags from the specified set to be in this set too
+//(but copied will have their own values, so parsing this set won't update
+// values in the otherSet)
+func (set *Set) AddSet(otherSet Set) error {
+	if set == nil {
+		return fmt.Errorf("(nil).AddSet")
+	}
+	updated := *set
+	for _, flag := range otherSet.flags {
+		if _, err := updated.Add(flag); err != nil {
+			return fmt.Errorf("Cannot copy all flags: %v", err)
+		}
+	}
+	*set = updated
+	return nil
+} //Set.AddSet()
 
 //Flag to return a flag description
 func (set Set) Flag(n string) FlagDescription {
@@ -235,6 +363,14 @@ func (set *Set) ParseKnown(options []string) ([]string, error) {
 			flag.value = intValue
 		case string:
 			flag.value = valueString
+			if flag.validate != nil {
+				if err := flag.validate(flag.value); err != nil {
+					return remainingArgs, fmt.Errorf("%n value \"%s\" is not valid: %v", flag, flag.value, err)
+				}
+			}
+			if flag.group != nil {
+
+			}
 		default:
 			return remainingArgs, fmt.Errorf("Sorry, flags of type %T is not yet fully supported", v)
 		}
