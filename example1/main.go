@@ -2,7 +2,24 @@
 //basic command line option parsing
 //Run this with option ? to see usage, or make a mistake to see usage
 //    $ ./example1 ?
+//    Usage: example1 [options]
+//    -d	--debug 	false	Run in debug mode
+//    -e	--error 	false	Error stack dump
+//      	--input 	     	Input filename
+//    -o	--output	     	Output filename
+//    -l	--limit 	    2	Limit nr of records
 //
+//Run this with some option values:
+//    ./example1 --input=/tmp/in --output=/tmp/out -e -d false
+//    2018/09/06 07:30:59 DEBUG OFF
+//    2018/09/06 07:30:59 Error dump is true
+//    2018/09/06 07:30:59 Limit=2
+//    2018/09/06 07:30:59 Input=/tmp/in
+//    2018/09/06 07:30:59 Output=/tmp/out
+//    2018/09/06 07:30:59 Flags: flag{-d:false}flag{-e:true}flag{--input:/tmp/in}flag{-o:/tmp/out}flag{-l:2}
+//
+//Note that bool flags can be defined with/without value
+//When the value is ommitted, true is assumed, e.g. -d can enable debugging, or -d true or --debug or --debug=true
 package main
 
 import (
