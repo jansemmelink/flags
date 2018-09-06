@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	defaultSet = NewSet()
+	defaultSet = NewSet("", "")
 )
 
 //Bool in the default set
@@ -48,33 +48,7 @@ func Usage(errorMsg string) {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", errorMsg)
 	}
 	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", path.Base(os.Args[0]))
-	longLen := 0
-	valueLen := 0
-	for _, flag := range defaultSet.flags {
-		l := len(flag.long)
-		if l > longLen {
-			longLen = l
-		}
-		if flag.value != nil {
-			v := fmt.Sprintf("%v", flag.value)
-			vl := len(v)
-			if vl > valueLen {
-				valueLen = vl
-			}
-		}
-	} //for each flag
-
-	for _, flag := range defaultSet.flags {
-		fmt.Fprintf(os.Stderr, "\t%s\t%-*.*s\t%*v\t%s\n",
-			flag.short,
-			longLen,
-			longLen,
-			flag.long,
-			valueLen,
-			flag.value,
-			flag.doc)
-	} //for each flag
-
+	defaultSet.PrintUsage(os.Stderr)
 	os.Exit(-1)
 } //Usage()
 

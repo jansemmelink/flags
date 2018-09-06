@@ -3,6 +3,7 @@ package flags
 import (
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,14 +26,18 @@ type FlagDescription struct {
 
 //Set of flags
 type Set struct {
+	name  string
+	doc   string
 	flags []FlagDescription
 	short map[string]*FlagDescription
 	long  map[string]*FlagDescription
 }
 
 //NewSet to create a new set
-func NewSet() *Set {
+func NewSet(name, doc string) *Set {
 	return &Set{
+		name:  name,
+		doc:   doc,
 		flags: make([]FlagDescription, 0),
 		short: make(map[string]*FlagDescription),
 		long:  make(map[string]*FlagDescription),
@@ -162,8 +167,22 @@ func (set Set) Flag(n string) FlagDescription {
 	return *flag
 } //Set.Flag()
 
-//Parse ...
+//Parse and return error if found any unknown options
 func (set *Set) Parse(options []string) error {
+	remainingArgs, err := set.ParseKnown(options)
+	if err != nil {
+		return err
+	}
+	if len(remainingArgs) > 0 {
+		return fmt.Errorf("Unknown options: %v", remainingArgs)
+	}
+	return nil
+} //Set.Parse()
+
+//ParseKnown process all known arguments and return the remaining/unknown args
+//but return error on invalid arguments
+func (set *Set) ParseKnown(options []string) ([]string, error) {
+	remainingArgs := make([]string, 0)
 	skip := 0
 	for i, opt := range options {
 		if skip > 0 {
@@ -177,8 +196,8 @@ func (set *Set) Parse(options []string) error {
 			//found short option match, value in next opt element
 			if i < len(options)-1 {
 				valueString = options[i+1]
+				skip = 1
 			}
-			skip = 1
 		} else {
 			//not a short option, may be a long options "--word=value"
 			//so we need to match "--word"
@@ -189,9 +208,13 @@ func (set *Set) Parse(options []string) error {
 			}
 			flag, ok = set.long[dashDashWord]
 			if !ok {
-				return fmt.Errorf("Unknown options from %v", options[i:])
+				//unknown option: add to remain and move on
+				remainingArgs = append(remainingArgs, opt)
+				skip = 0
+				continue
 			}
-		}
+		} //if not short
+
 		switch v := flag.value.(type) {
 		case bool:
 			//if next option is "true" or "false", parse the value
@@ -207,19 +230,19 @@ func (set *Set) Parse(options []string) error {
 		case int:
 			intValue, err := strconv.Atoi(valueString)
 			if err != nil {
-				return fmt.Errorf("Expecting %s <integer> or %s=<integer>", flag.short, flag.long)
+				return remainingArgs, fmt.Errorf("Expecting %s <integer> or %s=<integer>", flag.short, flag.long)
 			}
 			flag.value = intValue
 		case string:
 			flag.value = valueString
 		default:
-			return fmt.Errorf("Sorry, flags of type %T is not yet fully supported", v)
+			return remainingArgs, fmt.Errorf("Sorry, flags of type %T is not yet fully supported", v)
 		}
 
 		//variable flag is local, we must update the flag in the set as well
 		set.flags[flag.index].value = flag.value
 	} //for each option specified
-	return nil //fmt.Errorf("Not yet fully implemented parsing")
+	return remainingArgs, nil
 } //Set.Parse()
 
 //Format to write the set into text
@@ -230,6 +253,37 @@ func (set Set) Format(state fmt.State, c rune) {
 	}
 	state.Write([]byte(s))
 } //Set.Format()
+
+//PrintUsage prints all flags as one would normally print them in command line usage output
+func (set Set) PrintUsage(f *os.File) {
+	longLen := 0
+	valueLen := 0
+	for _, flag := range set.flags {
+		l := len(flag.long)
+		if l > longLen {
+			longLen = l
+		}
+		if flag.value != nil {
+			v := fmt.Sprintf("%v", flag.value)
+			vl := len(v)
+			if vl > valueLen {
+				valueLen = vl
+			}
+		}
+	} //for each flag
+
+	for _, flag := range set.flags {
+		fmt.Fprintf(f, "\t%s\t%-*.*s\t%*v\t%s\n",
+			flag.short,
+			longLen,
+			longLen,
+			flag.long,
+			valueLen,
+			flag.value,
+			flag.doc)
+	} //for each flag
+	return
+} //Set.PrintUsage()
 
 //Format to write the flag into text
 func (f FlagDescription) Format(state fmt.State, c rune) {
