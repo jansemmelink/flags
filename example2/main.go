@@ -2,6 +2,16 @@
 //flag parsing in stages, e.g. when all your images should support a subset
 //of flags, those can be parsed up front and other flags can be parsed
 //after that when you figured out which other flags are required.
+//
+// Example:
+//----------------------------------------------------------------------------
+//	./example2 -g -d true -h --logfile=/tmp/s -o del
+//	2018/09/06 11:54:07 DEBUG Mode
+//	2018/09/06 11:54:07 Logfile = /tmp/s
+//	2018/09/06 11:54:07 Remaining arguments: [-g -h -o del]
+//	2018/09/06 11:54:07 Operation="del"
+//	2018/09/06 11:54:07 Remaining arguments: [-g -h]
+//----------------------------------------------------------------------------
 package main
 
 import (
@@ -43,6 +53,30 @@ func main() {
 	} else {
 		log.Printf("Log to terminal stderr\n")
 	}
+
+	//show what args remained
+	if len(args) > 0 {
+		log.Printf("Remaining arguments: %v\n", args)
+	} else {
+		log.Printf("No remaining arguments\n")
+	}
+
+	//now say wait to determine the operation from -o <oper> or --oper=<oper>
+	//then continue parsing operation specified options, we can do this:
+
+	opers := []string{"add", "get", "upd", "del"}
+	operSelectorSet := flags.NewSet("operation", "Operation")
+	operSelectorSet.String("-o", "--oper", "", fmt.Sprintf("Select operation to do %v", opers))
+
+	args, err = operSelectorSet.ParseKnown(args)
+	if err != nil {
+		operSelectorSet.PrintUsage(os.Stderr)
+		panic(fmt.Sprintf("Failed to parse operation flags: %v", err))
+	}
+
+	log.Printf("Operation=\"%s\"", operSelectorSet.Flag("-o").Value().(string))
+
+	//NOTE: The usage above and here only shows that set of operation, not the complete set... solved in next examples.
 
 	//show what args remained
 	if len(args) > 0 {
