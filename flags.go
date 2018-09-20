@@ -25,13 +25,14 @@ type FlagValueValidationFunc func(value interface{}) error
 
 //FlagDescription ...
 type FlagDescription struct {
-	index    int
-	short    string
-	long     string
-	value    interface{}
-	validate FlagValueValidationFunc
-	group    map[string]group
-	doc      string
+	index     int
+	short     string
+	long      string
+	value     interface{}
+	specified bool
+	validate  FlagValueValidationFunc
+	group     map[string]group
+	doc       string
 }
 
 //Set of flags
@@ -67,11 +68,12 @@ func newFlag(short, long string, value interface{}, validateFunc FlagValueValida
 		return FlagDescription{}, fmt.Errorf("Long option %s must be \"--<word>\" that starts and ends with a letters or digits and allows '_', '-' and '.' in the middle", long)
 	}
 	f := FlagDescription{
-		short:    short,
-		long:     long,
-		value:    value,
-		validate: validateFunc,
-		doc:      doc,
+		short:     short,
+		long:      long,
+		value:     value,
+		specified: false,
+		validate:  validateFunc,
+		doc:       doc,
 	}
 	return f, nil
 } //newFlag()
@@ -355,12 +357,14 @@ func (set *Set) ParseKnown(options []string) ([]string, error) {
 				flag.value = true
 				skip = 0
 			}
+			flag.specified = true
 		case int:
 			intValue, err := strconv.Atoi(valueString)
 			if err != nil {
 				return remainingArgs, fmt.Errorf("Expecting %s <integer> or %s=<integer>", flag.short, flag.long)
 			}
 			flag.value = intValue
+			flag.specified = true
 		case string:
 			flag.value = valueString
 			if flag.validate != nil {
@@ -368,15 +372,17 @@ func (set *Set) ParseKnown(options []string) ([]string, error) {
 					return remainingArgs, fmt.Errorf("%n value \"%s\" is not valid: %v", flag, flag.value, err)
 				}
 			}
-			if flag.group != nil {
+			flag.specified = true
+			/*if flag.group != nil {
 
-			}
+			}*/
 		default:
 			return remainingArgs, fmt.Errorf("Sorry, flags of type %T is not yet fully supported", v)
 		}
 
 		//variable flag is local, we must update the flag in the set as well
 		set.flags[flag.index].value = flag.value
+		set.flags[flag.index].specified = flag.specified
 	} //for each option specified
 	return remainingArgs, nil
 } //Set.Parse()
@@ -449,6 +455,11 @@ func (f FlagDescription) Format(state fmt.State, c rune) {
 func (f FlagDescription) Value() interface{} {
 	return f.value
 } //FlagDescription.Value()
+
+//Specified to get the parsed value of the flag
+func (f FlagDescription) Specified() bool {
+	return f.specified
+} //FlagDescription.Specified()
 
 //return true if string consists only of alpha-numeric characters: 0-9,a-z,A-Z
 func onlyAlnum(s string) bool {
